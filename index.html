@@ -1,0 +1,835 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Control de Estudios – Laboratorio Médico Polanco</title>
+
+  <!-- Firebase SDK (CDN, compat) -->
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
+
+  <style>
+    :root {
+      --orange: #e87722;
+      --dark:   #1a1a2e;
+      --card:   #ffffff;
+      --bg:     #f4f6fb;
+      --green:  #27ae60;
+      --yellow: #f39c12;
+      --red:    #e74c3c;
+      --blue:   #2980b9;
+      --gray:   #95a5a6;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: 'Segoe UI', sans-serif; background: var(--bg); color: #333; }
+
+    /* ── HEADER ── */
+    header {
+      background: var(--dark); color: #fff; padding: 0 24px;
+      display: flex; align-items: center; justify-content: space-between;
+      height: 64px; box-shadow: 0 2px 8px #0005;
+    }
+    header .brand { display: flex; align-items: center; gap: 12px; }
+    header .brand span { font-size: 1.3rem; font-weight: 700; }
+    header .brand small { color: var(--orange); font-size: .8rem; }
+    header .live { display: flex; align-items: center; gap: 8px; font-size: .82rem; color: #aaa; }
+    header .dot  { width: 9px; height: 9px; border-radius: 50%; background: var(--green); animation: pulse 1.5s infinite; }
+    @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.3} }
+    .fb-status { font-size: .72rem; padding: 2px 8px; border-radius: 20px; background: #0a3; color:#fff; margin-left:6px; }
+    .fb-status.offline { background: #c0392b; }
+
+    /* ── NAV ── */
+    nav { background: var(--orange); display: flex; gap: 2px; padding: 0 24px; }
+    nav button {
+      background: transparent; border: none; color: #fff;
+      padding: 13px 22px; font-size: .95rem; font-weight: 600;
+      cursor: pointer; border-bottom: 3px solid transparent; transition: .2s;
+    }
+    nav button.active, nav button:hover { border-bottom-color: #fff; background: #0002; }
+
+    /* ── MAIN ── */
+    main { padding: 24px; }
+
+    /* ── STATS ── */
+    .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px,1fr)); gap: 16px; margin-bottom: 24px; }
+    .stat-card { background: var(--card); border-radius: 12px; padding: 18px 20px; box-shadow: 0 2px 8px #0001; border-left: 5px solid var(--orange); }
+    .stat-card.green  { border-color: var(--green); }
+    .stat-card.yellow { border-color: var(--yellow); }
+    .stat-card.red    { border-color: var(--red); }
+    .stat-card.blue   { border-color: var(--blue); }
+    .stat-card.purple { border-color: #6c3483; }
+    .stat-card .num { font-size: 2rem; font-weight: 800; }
+    .stat-card .lbl { font-size: .78rem; color: #888; margin-top: 4px; }
+
+    /* ── SECTION CARD ── */
+    .section-card { background: var(--card); border-radius: 12px; padding: 20px; box-shadow: 0 2px 8px #0001; margin-bottom: 24px; }
+    .section-card h2 { font-size: 1.1rem; font-weight: 700; margin-bottom: 16px; display: flex; align-items: center; gap: 8px; }
+    .badge { font-size: .7rem; border-radius: 20px; padding: 2px 10px; color:#fff; }
+    .badge.polanco { background: var(--orange); }
+    .badge.pet     { background: var(--blue); }
+    .badge.reciente{ background: var(--gray); }
+
+    /* ── TOOLBAR ── */
+    .toolbar { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 14px; align-items: center; }
+    .toolbar input, .toolbar select { border: 1px solid #ddd; border-radius: 8px; padding: 7px 12px; font-size: .88rem; outline: none; background: #fafafa; }
+    .toolbar input:focus, .toolbar select:focus { border-color: var(--orange); }
+    .toolbar input { flex: 1; min-width: 180px; }
+
+    /* ── BUTTONS ── */
+    .btn { padding: 8px 18px; border-radius: 8px; border: none; cursor: pointer; font-size: .88rem; font-weight: 600; transition: .15s; }
+    .btn-primary   { background: var(--orange); color: #fff; }
+    .btn-primary:hover { background: #c96515; }
+    .btn-secondary { background: #eee; color: #555; }
+    .btn-secondary:hover { background: #ddd; }
+    .btn-green { background: var(--green); color:#fff; }
+    .btn-red   { background: var(--red);   color:#fff; }
+    .btn-blue  { background: var(--blue);  color:#fff; }
+    .btn-sm    { padding: 4px 10px; font-size: .78rem; border-radius: 6px; }
+
+    /* ── TABLE ── */
+    .table-wrap { overflow-x: auto; }
+    table { width: 100%; border-collapse: collapse; font-size: .87rem; }
+    thead th { background: #f0f2f7; padding: 10px 12px; text-align: left; font-weight: 700; color: #555; border-bottom: 2px solid #e0e3ea; white-space: nowrap; }
+    tbody tr { border-bottom: 1px solid #f0f0f0; transition: background .15s; }
+    tbody tr:hover { background: #fdf4ee; }
+    tbody td { padding: 9px 12px; vertical-align: middle; }
+    .no-data { text-align: center; color: #aaa; padding: 40px 0; font-size: .95rem; }
+
+    /* ── STATUS BADGES ── */
+    .status { display: inline-block; border-radius: 20px; padding: 3px 12px; font-size: .75rem; font-weight: 700; white-space: nowrap; }
+    .s-solventado { background: #d5f5e3; color: #1e8449; }
+    .s-proceso    { background: #fef9e7; color: #b7770d; }
+    .s-cancelado  { background: #fadbd8; color: #922b21; }
+    .s-pendiente  { background: #eaf4fd; color: #1a5276; }
+    .s-parcial    { background: #f0e6ff; color: #6c3483; }
+
+    /* ── MODAL ── */
+    .modal-overlay { display: none; position: fixed; inset: 0; background: #0006; z-index: 1000; align-items: center; justify-content: center; }
+    .modal-overlay.open { display: flex; }
+    .modal { background: #fff; border-radius: 16px; padding: 28px 32px; width: 100%; max-width: 540px; box-shadow: 0 8px 32px #0003; max-height: 92vh; overflow-y: auto; }
+    .modal h3 { font-size: 1.1rem; margin-bottom: 20px; }
+    .form-group { margin-bottom: 14px; }
+    .form-group label { display: block; font-size: .82rem; color: #666; margin-bottom: 4px; font-weight: 600; }
+    .form-group input, .form-group select, .form-group textarea { width: 100%; border: 1px solid #ddd; border-radius: 8px; padding: 8px 12px; font-size: .9rem; outline: none; }
+    .form-group input:focus, .form-group select:focus { border-color: var(--orange); }
+    .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    .modal-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 20px; }
+
+    /* ── PAGINATION ── */
+    .pagination { display: flex; justify-content: flex-end; gap: 6px; margin-top: 12px; align-items: center; font-size: .85rem; }
+    .pagination button { padding: 4px 12px; border: 1px solid #ddd; border-radius: 6px; background: #fff; cursor: pointer; }
+    .pagination button.active, .pagination button:hover { background: var(--orange); color: #fff; border-color: var(--orange); }
+    .pagination span { color: #888; }
+
+    /* ── INFO BOX ── */
+    .info-box { border-left: 4px solid; padding: 10px 14px; border-radius: 8px; font-size: .82rem; color: #666; margin-bottom: 12px; }
+    .info-box.orange { border-color: var(--orange); background:#fff8f0; }
+    .info-box.blue   { border-color: var(--blue);   background:#eaf4fd; }
+
+    /* ── LOADER ── */
+    .spinner { display: inline-block; width: 18px; height: 18px; border: 3px solid #f3f3f3; border-top: 3px solid var(--orange); border-radius: 50%; animation: spin .8s linear infinite; vertical-align: middle; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* ── TAB CONTENT ── */
+    .tab-content { display: none; }
+    .tab-content.active { display: block; }
+
+    /* ── LOGIN OVERLAY ── */
+    #login-overlay {
+      position: fixed; inset: 0; background: var(--dark);
+      z-index: 2000; display: flex; align-items: center; justify-content: center;
+    }
+    .login-box { background:#fff; border-radius:16px; padding:40px; width:360px; text-align:center; box-shadow:0 8px 32px #0005; }
+    .login-box h2 { font-size:1.4rem; margin-bottom:6px; }
+    .login-box p { color:#888; font-size:.88rem; margin-bottom:24px; }
+    .login-box input { width:100%; border:1px solid #ddd; border-radius:8px; padding:10px 14px; font-size:.95rem; margin-bottom:12px; outline:none; }
+    .login-box input:focus { border-color:var(--orange); }
+    .login-box .err { color:var(--red); font-size:.82rem; margin-bottom:10px; min-height:18px; }
+    .login-logo { width:60px; height:60px; background:var(--orange); border-radius:50%; display:flex; align-items:center; justify-content:center; font-weight:800; color:#fff; font-size:1.1rem; margin:0 auto 20px; }
+  </style>
+</head>
+<body>
+
+<!-- ══════ LOGIN OVERLAY ══════ -->
+<div id="login-overlay">
+  <div class="login-box">
+    <div class="login-logo">LMP</div>
+    <h2>Control de Estudios</h2>
+    <p>Laboratorio Médico Polanco · Sanare Salud</p>
+    <input type="text" id="login-user" placeholder="Usuario" autocomplete="username"/>
+    <input type="password" id="login-pass" placeholder="Contraseña" autocomplete="current-password"/>
+    <div class="err" id="login-err"></div>
+    <button class="btn btn-primary" style="width:100%;padding:11px" onclick="doLogin()">Entrar</button>
+  </div>
+</div>
+
+<!-- ══════ HEADER ══════ -->
+<header>
+  <div class="brand">
+    <div style="width:38px;height:38px;background:var(--orange);border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:800;color:#fff;font-size:.85rem;">LMP</div>
+    <div>
+      <span>Control de Estudios</span><br/>
+      <small>Laboratorio Médico Polanco · Sanare Salud</small>
+    </div>
+  </div>
+  <div class="live">
+    <div class="dot"></div>
+    <span id="reloj">--:--:--</span>
+    &nbsp;|&nbsp;<span id="fecha-hoy">--/--/----</span>
+    <span class="fb-status offline" id="fb-status">⏳ Conectando…</span>
+    <button class="btn btn-secondary btn-sm" onclick="doLogout()" style="margin-left:8px">Salir</button>
+  </div>
+</header>
+
+<!-- ══════ NAV TABS ══════ -->
+<nav>
+  <button class="active" onclick="switchTab('dashboard',this)">📊 Dashboard</button>
+  <button onclick="switchTab('estudios',this)">🧪 Estudios Polanco</button>
+  <button onclick="switchTab('pet',this)">⚛️ PET UNAM</button>
+  <button onclick="switchTab('pagos',this)">💰 Pagos</button>
+</nav>
+
+<main>
+
+  <!-- ══════ DASHBOARD ══════ -->
+  <div id="tab-dashboard" class="tab-content active">
+    <div class="stats">
+      <div class="stat-card"><div class="num" id="st-total">—</div><div class="lbl">Total estudios</div></div>
+      <div class="stat-card green"><div class="num" id="st-solv">—</div><div class="lbl">Solventados</div></div>
+      <div class="stat-card yellow"><div class="num" id="st-proc">—</div><div class="lbl">En proceso</div></div>
+      <div class="stat-card red"><div class="num" id="st-canc">—</div><div class="lbl">Cancelados</div></div>
+      <div class="stat-card blue"><div class="num" id="st-pend">—</div><div class="lbl">Pendientes</div></div>
+      <div class="stat-card purple"><div class="num" id="st-pet">—</div><div class="lbl">PET UNAM</div></div>
+    </div>
+    <div class="section-card">
+      <h2>📋 Últimos registros <span class="badge reciente">Recientes</span></h2>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Fecha</th><th>Paciente</th><th>Estudio / Tipo</th><th>Categoría</th><th>Monto</th><th>Estatus pago</th></tr></thead>
+          <tbody id="tbody-recientes"><tr><td colspan="6" class="no-data"><span class="spinner"></span> Cargando…</td></tr></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══════ ESTUDIOS POLANCO ══════ -->
+  <div id="tab-estudios" class="tab-content">
+    <div class="section-card">
+      <h2>🧪 Estudios – Portal Polanco <span class="badge polanco">Polanco</span></h2>
+      <div class="toolbar">
+        <input type="text" id="buscar-e" placeholder="🔍 Buscar paciente, estudio o folio…" oninput="filterEstudios()"/>
+        <select id="fil-est-e" onchange="filterEstudios()">
+          <option value="">Todos los estatus</option>
+          <option>Solventado</option><option>En proceso</option>
+          <option>Cancelado</option><option>Pendiente</option><option>Pago parcial</option>
+        </select>
+        <button class="btn btn-primary" onclick="openModal('modal-estudio',null)">+ Nuevo estudio</button>
+        <button class="btn btn-secondary" onclick="exportCSV('estudios')">⬇ CSV</button>
+        <button class="btn btn-secondary" onclick="forzarSeed()" title="Recarga los pacientes del portal Polanco si Firestore está vacío">🔄 Recargar pacientes</button>
+      </div>
+      <div class="info-box orange">
+        💡 <strong>¿Cómo usar?</strong> Los datos vienen del portal Polanco. Haz clic en <strong>✏</strong> para completar folio, monto y estatus de pago. Los cambios se guardan automáticamente en Firebase.
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr><th>#</th><th>Fecha</th><th>ID Pac.</th><th>Paciente</th><th>Estudio</th><th>Folio</th><th>Monto</th><th>Estatus pago</th><th>Notas</th><th>Acciones</th></tr>
+          </thead>
+          <tbody id="tbody-estudios"><tr><td colspan="10" class="no-data"><span class="spinner"></span> Cargando desde Firebase…</td></tr></tbody>
+        </table>
+      </div>
+      <div class="pagination" id="pag-e"></div>
+    </div>
+  </div>
+
+  <!-- ══════ PET UNAM ══════ -->
+  <div id="tab-pet" class="tab-content">
+    <div class="section-card">
+      <h2>⚛️ Estudios PET UNAM <span class="badge pet">PET UNAM</span></h2>
+      <div class="toolbar">
+        <input type="text" id="buscar-p" placeholder="🔍 Buscar paciente o notas…" oninput="filterPET()"/>
+        <select id="fil-est-p" onchange="filterPET()">
+          <option value="">Todos los estatus</option>
+          <option>Solventado</option><option>En proceso</option>
+          <option>Cancelado</option><option>Pendiente</option><option>Pago parcial</option>
+        </select>
+        <select id="fil-tipo-p" onchange="filterPET()">
+          <option value="">Todos los tipos PET</option>
+          <option>PET/CT Cuerpo Completo FDG</option>
+          <option>PET/CT Cerebro FDG</option>
+          <option>PET/CT Cuerpo Completo PSMA</option>
+          <option>PET/CT Cuerpo Completo NaF</option>
+          <option>Otro</option>
+        </select>
+        <button class="btn btn-primary" onclick="openModal('modal-pet',null)">+ Nuevo PET</button>
+        <button class="btn btn-secondary" onclick="exportCSV('pet')">⬇ CSV</button>
+      </div>
+      <div class="info-box blue">
+        ⚛️ <strong>PET UNAM:</strong> Monto base <strong>$20,000 MXN</strong> · Participación <strong>$1,000 MXN</strong>. Actualiza el nombre del paciente y el estatus de pago al confirmar cada estudio.
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr><th>#</th><th>Fecha</th><th>Paciente</th><th>Tipo PET</th><th>Cotizado</th><th>Pagado</th><th>Participación</th><th>Estatus</th><th>Notas</th><th>Acciones</th></tr>
+          </thead>
+          <tbody id="tbody-pet"><tr><td colspan="10" class="no-data"><span class="spinner"></span> Cargando desde Firebase…</td></tr></tbody>
+        </table>
+      </div>
+      <div class="pagination" id="pag-p"></div>
+    </div>
+  </div>
+
+  <!-- ══════ PAGOS ══════ -->
+  <div id="tab-pagos" class="tab-content">
+    <div class="stats">
+      <div class="stat-card green"><div class="num" id="p-solv">$—</div><div class="lbl">Total solventado</div></div>
+      <div class="stat-card yellow"><div class="num" id="p-proc">$—</div><div class="lbl">En proceso / Pago parcial</div></div>
+      <div class="stat-card red"><div class="num" id="p-pend">$—</div><div class="lbl">Pendiente de cobro</div></div>
+    </div>
+    <div class="section-card">
+      <h2>💰 Resumen de pagos</h2>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Categoría</th><th>Paciente</th><th>Estudio</th><th>Monto</th><th>Estatus</th><th>Fecha</th></tr></thead>
+          <tbody id="tbody-pagos"><tr><td colspan="6" class="no-data"><span class="spinner"></span> Cargando…</td></tr></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+</main>
+
+<!-- ══════ MODAL ESTUDIO ══════ -->
+<div class="modal-overlay" id="modal-estudio">
+  <div class="modal">
+    <h3>🧪 Agregar / Editar Estudio Polanco</h3>
+    <input type="hidden" id="e-id"/>
+    <div class="form-row">
+      <div class="form-group"><label>Fecha</label><input type="date" id="e-fecha"/></div>
+      <div class="form-group"><label>ID Paciente (portal)</label><input type="text" id="e-idpac" placeholder="p.ej. 9687214"/></div>
+    </div>
+    <div class="form-group"><label>Nombre del paciente</label><input type="text" id="e-nombre" placeholder="Nombre completo"/></div>
+    <div class="form-group"><label>Estudio / descripción</label><input type="text" id="e-estudio" placeholder="p.ej. Química sanguínea 27 elementos"/></div>
+    <div class="form-row">
+      <div class="form-group"><label>Folio / Factura</label><input type="text" id="e-folio" placeholder="F-0001"/></div>
+      <div class="form-group"><label>Monto (MXN)</label><input type="number" id="e-monto" placeholder="0.00" step="0.01"/></div>
+    </div>
+    <div class="form-group"><label>Estatus de pago</label>
+      <select id="e-estatus">
+        <option>Pendiente</option><option>En proceso</option>
+        <option>Pago parcial</option><option>Solventado</option><option>Cancelado</option>
+      </select>
+    </div>
+    <div class="form-group"><label>Notas</label><textarea id="e-notas" rows="2" placeholder="Observaciones…"></textarea></div>
+    <div class="modal-actions">
+      <button class="btn btn-secondary" onclick="closeModal('modal-estudio')">Cancelar</button>
+      <button class="btn btn-primary" onclick="saveEstudio()">💾 Guardar en Firebase</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══════ MODAL PET ══════ -->
+<div class="modal-overlay" id="modal-pet">
+  <div class="modal">
+    <h3>⚛️ Agregar / Editar PET UNAM</h3>
+    <input type="hidden" id="p-id"/>
+    <div class="form-row">
+      <div class="form-group"><label>Fecha del estudio</label><input type="date" id="p-fecha"/></div>
+      <div class="form-group"><label>Nombre del paciente</label><input type="text" id="p-nombre" placeholder="Nombre completo"/></div>
+    </div>
+    <div class="form-group"><label>Tipo de PET</label>
+      <select id="p-tipo">
+        <option>PET/CT Cuerpo Completo FDG</option>
+        <option>PET/CT Cerebro FDG</option>
+        <option>PET/CT Cuerpo Completo PSMA</option>
+        <option>PET/CT Cuerpo Completo NaF</option>
+        <option>Otro</option>
+      </select>
+    </div>
+    <div class="form-row">
+      <div class="form-group"><label>Monto cotizado (MXN)</label><input type="number" id="p-cotizado" value="20000" step="0.01"/></div>
+      <div class="form-group"><label>Participación (MXN)</label><input type="number" id="p-participacion" value="1000" step="0.01"/></div>
+    </div>
+    <div class="form-row">
+      <div class="form-group"><label>Monto pagado (MXN)</label><input type="number" id="p-pagado" value="0" step="0.01"/></div>
+      <div class="form-group"><label>Estatus de pago</label>
+        <select id="p-estatus">
+          <option>Pendiente</option><option>En proceso</option>
+          <option>Pago parcial</option><option>Solventado</option><option>Cancelado</option>
+        </select>
+      </div>
+    </div>
+    <div class="form-group"><label>Notas</label><textarea id="p-notas" rows="2" placeholder="Observaciones, número de orden, etc."></textarea></div>
+    <div class="modal-actions">
+      <button class="btn btn-secondary" onclick="closeModal('modal-pet')">Cancelar</button>
+      <button class="btn btn-primary" onclick="savePET()">💾 Guardar en Firebase</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ══════════════════════════════════════════
+//  FIREBASE CONFIG
+// ══════════════════════════════════════════
+const firebaseConfig = {
+  apiKey:            "AIzaSyBbyXM9ACKqr9htqyHF4HcnbJH25V3XNAg",
+  authDomain:        "lpolanco-a925b.firebaseapp.com",
+  projectId:         "lpolanco-a925b",
+  storageBucket:     "lpolanco-a925b.firebasestorage.app",
+  messagingSenderId: "1018994166941",
+  appId:             "1:1018994166941:web:b3c280f257b29251fe1874",
+  measurementId:     "G-DJBH4VJ5CK"
+};
+firebase.initializeApp(firebaseConfig);
+const db   = firebase.firestore();
+const auth = firebase.auth();
+
+// ══════════════════════════════════════════
+//  CREDENCIALES LOCALES
+//  (el acceso real a Firestore se protege con
+//   autenticación anónima + reglas de seguridad)
+// ══════════════════════════════════════════
+const CREDS = { usuario: 'admin', password: 'Sanare2026' };
+
+// ══════════════════════════════════════════
+//  AUTH
+// ══════════════════════════════════════════
+function doLogin() {
+  const user = document.getElementById('login-user').value.trim();
+  const pass = document.getElementById('login-pass').value;
+  document.getElementById('login-err').textContent = '';
+
+  if (user === CREDS.usuario && pass === CREDS.password) {
+    // Autenticación anónima en Firebase para activar reglas de Firestore
+    auth.signInAnonymously().catch(err => {
+      // Si falla anónimo (no habilitado aún), continuar igual
+      console.warn('signInAnonymously:', err.message);
+      mostrarApp();
+    });
+  } else {
+    document.getElementById('login-err').textContent = '❌ Usuario o contraseña incorrectos.';
+  }
+}
+
+function mostrarApp() {
+  document.getElementById('login-overlay').style.display = 'none';
+  initListeners();
+}
+
+function doLogout() {
+  if (confirm('¿Cerrar sesión?')) {
+    auth.signOut().finally(() => {
+      document.getElementById('login-overlay').style.display = 'flex';
+    });
+  }
+}
+
+document.getElementById('login-pass').addEventListener('keydown', e => { if (e.key === 'Enter') doLogin(); });
+
+auth.onAuthStateChanged(user => {
+  if (user) {
+    mostrarApp();
+  }
+  // Si no hay sesión, el overlay ya está visible por defecto
+});
+
+// ══════════════════════════════════════════
+//  CLOCK
+// ══════════════════════════════════════════
+(function tick() {
+  const n = new Date();
+  document.getElementById('reloj').textContent = n.toLocaleTimeString('es-MX');
+  document.getElementById('fecha-hoy').textContent = n.toLocaleDateString('es-MX',{day:'2-digit',month:'short',year:'numeric'});
+  setTimeout(tick, 1000);
+})();
+
+// ══════════════════════════════════════════
+//  TABS
+// ══════════════════════════════════════════
+function switchTab(id, btn) {
+  document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
+  document.querySelectorAll('nav button').forEach(el => el.classList.remove('active'));
+  document.getElementById('tab-' + id).classList.add('active');
+  if (btn) btn.classList.add('active');
+}
+
+// ══════════════════════════════════════════
+//  LOCAL CACHES (actualizados por onSnapshot)
+// ══════════════════════════════════════════
+let estudios = [];
+let pets     = [];
+let pageE = 1, pageP = 1;
+const PAGE = 20;
+
+// ══════════════════════════════════════════
+//  DATOS INICIALES (semilla desde capturas del portal)
+// ══════════════════════════════════════════
+const SEED_ESTUDIOS = [
+  { fecha:'2026-11-17', idpac:'8759476', nombre:'MARIA FERNANDA ARRIETA MEDINA', estudio:'Hemograma completo',              folio:'', monto:'', estatus:'Pendiente', notas:'', categoria:'Polanco' },
+  { fecha:'2026-11-17', idpac:'9325495', nombre:'PRUEBA 1 11',                   estudio:'Química sanguínea 27 elementos',  folio:'', monto:'', estatus:'Pendiente', notas:'', categoria:'Polanco' },
+  { fecha:'2026-11-17', idpac:'9687214', nombre:'ISELA ISELA SYNLAB',            estudio:'Perfil tiroideo',                 folio:'', monto:'', estatus:'Pendiente', notas:'Estatus Activo en portal', categoria:'Polanco' },
+  { fecha:'2026-11-17', idpac:'9756514', nombre:'PRISCILLA BAEZ RUIZ',           estudio:'Hemograma completo',              folio:'', monto:'', estatus:'Pendiente', notas:'', categoria:'Polanco' },
+  { fecha:'2026-11-17', idpac:'9856598', nombre:'JORGE ELIAS TORRES CASTELAN',   estudio:'Perfil renal',                    folio:'', monto:'', estatus:'Pendiente', notas:'', categoria:'Polanco' },
+  { fecha:'2026-11-17', idpac:'9863434', nombre:'SILVINA DEL VALLE SANCHEZ',     estudio:'Química sanguínea 27 elementos',  folio:'', monto:'', estatus:'Pendiente', notas:'', categoria:'Polanco' },
+  { fecha:'2026-11-17', idpac:'9877488', nombre:'SARA GONZALEZ GALLARDO',        estudio:'Hemograma completo',              folio:'', monto:'', estatus:'Pendiente', notas:'', categoria:'Polanco' }
+];
+
+const SEED_PET = [
+  { fecha:'2026-11-17', nombre:'', tipo:'PET/CT Cuerpo Completo FDG',  cotizado:'20000', participacion:'1000', pagado:'0', estatus:'Pendiente', notas:'Cotización Patente y Bioequivalente', categoria:'PET UNAM' }
+];
+
+async function seedFirestoreIfEmpty() {
+  try {
+    const snapE = await db.collection('estudios').limit(1).get();
+    if (snapE.empty) {
+      const batch = db.batch();
+      SEED_ESTUDIOS.forEach(r => {
+        const ref = db.collection('estudios').doc();
+        batch.set(ref, { ...r, _ts: firebase.firestore.FieldValue.serverTimestamp() });
+      });
+      await batch.commit();
+      console.log('✅ Estudios Polanco iniciales cargados en Firestore.');
+    }
+
+    const snapP = await db.collection('pet_unam').limit(1).get();
+    if (snapP.empty) {
+      const batch2 = db.batch();
+      SEED_PET.forEach(r => {
+        const ref = db.collection('pet_unam').doc();
+        batch2.set(ref, { ...r, _ts: firebase.firestore.FieldValue.serverTimestamp() });
+      });
+      await batch2.commit();
+      console.log('✅ PET UNAM iniciales cargados en Firestore.');
+    }
+  } catch(err) {
+    console.warn('seedFirestore:', err.message);
+  }
+}
+
+// ══════════════════════════════════════════
+//  FIRESTORE REAL-TIME LISTENERS
+// ══════════════════════════════════════════
+async function forzarSeed() {
+  if (!confirm('¿Recargar los 7 pacientes del portal Polanco a Firestore?\n(No se duplican si ya existen por ID de paciente)')) return;
+  try {
+    const snap = await db.collection('estudios').get();
+    const existingIds = new Set(snap.docs.map(d => d.data().idpac).filter(Boolean));
+    const batch = db.batch();
+    let count = 0;
+    SEED_ESTUDIOS.forEach(r => {
+      if (!existingIds.has(r.idpac)) {
+        const ref = db.collection('estudios').doc();
+        batch.set(ref, { ...r, _ts: firebase.firestore.FieldValue.serverTimestamp() });
+        count++;
+      }
+    });
+    if (count > 0) {
+      await batch.commit();
+      alert(`✅ Se cargaron ${count} paciente(s) nuevos a Firestore.`);
+    } else {
+      alert('ℹ️ Todos los pacientes ya existen en Firestore. No se agregó ninguno nuevo.');
+    }
+  } catch(err) {
+    alert('Error: ' + err.message);
+  }
+}
+
+function initListeners() {
+  document.getElementById('fb-status').textContent = '🔥 Firebase';
+  document.getElementById('fb-status').classList.remove('offline');
+
+  // Cargar datos iniciales si Firestore está vacío
+  seedFirestoreIfEmpty();
+
+  db.collection('estudios').orderBy('_ts','desc').onSnapshot(snap => {
+    estudios = snap.docs.map(d => ({ ...d.data(), _docId: d.id }));
+    renderEstudios();
+    refreshDashboard();
+  }, err => console.error('estudios:', err));
+
+  db.collection('pet_unam').orderBy('_ts','desc').onSnapshot(snap => {
+    pets = snap.docs.map(d => ({ ...d.data(), _docId: d.id }));
+    renderPET();
+    refreshDashboard();
+  }, err => console.error('pet_unam:', err));
+}
+
+// ══════════════════════════════════════════
+//  HELPERS
+// ══════════════════════════════════════════
+function statusClass(s) {
+  return { Solventado:'s-solventado','En proceso':'s-proceso',Cancelado:'s-cancelado',Pendiente:'s-pendiente','Pago parcial':'s-parcial' }[s] || 's-pendiente';
+}
+function statusBadge(s) { return `<span class="status ${statusClass(s)}">${s||'Pendiente'}</span>`; }
+function fmt(n) { return n ? '$'+parseFloat(n).toLocaleString('es-MX',{minimumFractionDigits:2}) : '$0.00'; }
+function today() { return new Date().toISOString().slice(0,10); }
+
+// ══════════════════════════════════════════
+//  MODALS
+// ══════════════════════════════════════════
+function openModal(id, data) {
+  document.getElementById(id).classList.add('open');
+  if (id === 'modal-estudio') {
+    if (data) {
+      document.getElementById('e-id').value     = data._docId||'';
+      document.getElementById('e-fecha').value  = data.fecha||today();
+      document.getElementById('e-idpac').value  = data.idpac||'';
+      document.getElementById('e-nombre').value = data.nombre||'';
+      document.getElementById('e-estudio').value= data.estudio||'';
+      document.getElementById('e-folio').value  = data.folio||'';
+      document.getElementById('e-monto').value  = data.monto||'';
+      document.getElementById('e-estatus').value= data.estatus||'Pendiente';
+      document.getElementById('e-notas').value  = data.notas||'';
+    } else {
+      document.getElementById('e-id').value = '';
+      document.getElementById('e-fecha').value = today();
+      ['e-idpac','e-nombre','e-estudio','e-folio','e-monto','e-notas'].forEach(i => document.getElementById(i).value='');
+      document.getElementById('e-estatus').value = 'Pendiente';
+    }
+  }
+  if (id === 'modal-pet') {
+    if (data) {
+      document.getElementById('p-id').value           = data._docId||'';
+      document.getElementById('p-fecha').value         = data.fecha||today();
+      document.getElementById('p-nombre').value        = data.nombre||'';
+      document.getElementById('p-tipo').value          = data.tipo||'PET/CT Cuerpo Completo FDG';
+      document.getElementById('p-cotizado').value      = data.cotizado||'20000';
+      document.getElementById('p-participacion').value = data.participacion||'1000';
+      document.getElementById('p-pagado').value        = data.pagado||'0';
+      document.getElementById('p-estatus').value       = data.estatus||'Pendiente';
+      document.getElementById('p-notas').value         = data.notas||'';
+    } else {
+      document.getElementById('p-id').value = '';
+      document.getElementById('p-fecha').value = today();
+      document.getElementById('p-nombre').value = '';
+      document.getElementById('p-cotizado').value = '20000';
+      document.getElementById('p-participacion').value = '1000';
+      document.getElementById('p-pagado').value = '0';
+      document.getElementById('p-estatus').value = 'Pendiente';
+      document.getElementById('p-notas').value = '';
+    }
+  }
+}
+function closeModal(id) { document.getElementById(id).classList.remove('open'); }
+document.querySelectorAll('.modal-overlay').forEach(el => {
+  el.addEventListener('click', e => { if (e.target === el) closeModal(el.id); });
+});
+
+// ══════════════════════════════════════════
+//  CRUD – ESTUDIOS
+// ══════════════════════════════════════════
+function saveEstudio() {
+  const docId = document.getElementById('e-id').value;
+  const rec = {
+    fecha:   document.getElementById('e-fecha').value,
+    idpac:   document.getElementById('e-idpac').value,
+    nombre:  document.getElementById('e-nombre').value.trim(),
+    estudio: document.getElementById('e-estudio').value.trim(),
+    folio:   document.getElementById('e-folio').value,
+    monto:   document.getElementById('e-monto').value,
+    estatus: document.getElementById('e-estatus').value,
+    notas:   document.getElementById('e-notas').value,
+    categoria: 'Polanco',
+    _ts: firebase.firestore.FieldValue.serverTimestamp()
+  };
+  if (!rec.nombre || !rec.estudio) { alert('Nombre y estudio son obligatorios.'); return; }
+  const col = db.collection('estudios');
+  const p   = docId ? col.doc(docId).set(rec) : col.add(rec);
+  p.then(() => closeModal('modal-estudio'))
+   .catch(err => alert('Error al guardar: ' + err.message));
+}
+
+function delEstudio(docId) {
+  if (!confirm('¿Eliminar este estudio?')) return;
+  db.collection('estudios').doc(docId).delete().catch(err => alert(err.message));
+}
+
+// ══════════════════════════════════════════
+//  CRUD – PET
+// ══════════════════════════════════════════
+function savePET() {
+  const docId = document.getElementById('p-id').value;
+  const rec = {
+    fecha:         document.getElementById('p-fecha').value,
+    nombre:        document.getElementById('p-nombre').value.trim(),
+    tipo:          document.getElementById('p-tipo').value,
+    cotizado:      document.getElementById('p-cotizado').value,
+    participacion: document.getElementById('p-participacion').value,
+    pagado:        document.getElementById('p-pagado').value,
+    estatus:       document.getElementById('p-estatus').value,
+    notas:         document.getElementById('p-notas').value,
+    categoria: 'PET UNAM',
+    _ts: firebase.firestore.FieldValue.serverTimestamp()
+  };
+  if (!rec.nombre) { alert('El nombre del paciente es obligatorio.'); return; }
+  const col = db.collection('pet_unam');
+  const p   = docId ? col.doc(docId).set(rec) : col.add(rec);
+  p.then(() => closeModal('modal-pet'))
+   .catch(err => alert('Error al guardar: ' + err.message));
+}
+
+function delPET(docId) {
+  if (!confirm('¿Eliminar este registro PET?')) return;
+  db.collection('pet_unam').doc(docId).delete().catch(err => alert(err.message));
+}
+
+// ══════════════════════════════════════════
+//  RENDER – ESTUDIOS
+// ══════════════════════════════════════════
+function getFilteredE() {
+  const q = (document.getElementById('buscar-e')||{value:''}).value.toLowerCase();
+  const s = (document.getElementById('fil-est-e')||{value:''}).value;
+  return estudios.filter(r =>
+    (!q || (r.nombre||'').toLowerCase().includes(q) || (r.estudio||'').toLowerCase().includes(q) || (r.folio||'').toLowerCase().includes(q)) &&
+    (!s || r.estatus === s)
+  );
+}
+function filterEstudios() { pageE=1; renderEstudios(); }
+
+function renderEstudios() {
+  const data  = getFilteredE();
+  const pages = Math.max(1, Math.ceil(data.length/PAGE));
+  if (pageE > pages) pageE = 1;
+  const slice = data.slice((pageE-1)*PAGE, pageE*PAGE);
+  const tbody = document.getElementById('tbody-estudios');
+  tbody.innerHTML = slice.length
+    ? slice.map((r,i) => `<tr>
+        <td>${(pageE-1)*PAGE+i+1}</td>
+        <td>${r.fecha||'—'}</td>
+        <td><small>${r.idpac||'—'}</small></td>
+        <td><strong>${r.nombre||'—'}</strong></td>
+        <td>${r.estudio||'—'}</td>
+        <td>${r.folio||'—'}</td>
+        <td>${fmt(r.monto)}</td>
+        <td>${statusBadge(r.estatus)}</td>
+        <td><small>${r.notas||''}</small></td>
+        <td>
+          <button class="btn btn-blue btn-sm" onclick='openModal("modal-estudio",${JSON.stringify(r)})'>✏</button>
+          <button class="btn btn-red btn-sm" onclick="delEstudio('${r._docId}')">🗑</button>
+        </td>
+      </tr>`).join('')
+    : `<tr><td colspan="10" class="no-data">Sin registros que coincidan.</td></tr>`;
+  renderPag('pag-e', pages, pageE, p => { pageE=p; renderEstudios(); });
+}
+
+// ══════════════════════════════════════════
+//  RENDER – PET
+// ══════════════════════════════════════════
+function getFilteredP() {
+  const q  = (document.getElementById('buscar-p')||{value:''}).value.toLowerCase();
+  const s  = (document.getElementById('fil-est-p')||{value:''}).value;
+  const tp = (document.getElementById('fil-tipo-p')||{value:''}).value;
+  return pets.filter(r =>
+    (!q  || (r.nombre||'').toLowerCase().includes(q) || (r.notas||'').toLowerCase().includes(q)) &&
+    (!s  || r.estatus === s) &&
+    (!tp || r.tipo === tp)
+  );
+}
+function filterPET() { pageP=1; renderPET(); }
+
+function renderPET() {
+  const data  = getFilteredP();
+  const pages = Math.max(1, Math.ceil(data.length/PAGE));
+  if (pageP > pages) pageP = 1;
+  const slice = data.slice((pageP-1)*PAGE, pageP*PAGE);
+  const tbody = document.getElementById('tbody-pet');
+  tbody.innerHTML = slice.length
+    ? slice.map((r,i) => `<tr>
+        <td>${(pageP-1)*PAGE+i+1}</td>
+        <td>${r.fecha||'—'}</td>
+        <td><strong>${r.nombre||'<em style="color:#aaa">Sin nombre</em>'}</strong></td>
+        <td><span class="status s-pendiente" style="background:#e8f4fd">${r.tipo}</span></td>
+        <td>${fmt(r.cotizado)}</td>
+        <td>${fmt(r.pagado)}</td>
+        <td>${fmt(r.participacion)}</td>
+        <td>${statusBadge(r.estatus)}</td>
+        <td><small>${r.notas||''}</small></td>
+        <td>
+          <button class="btn btn-blue btn-sm" onclick='openModal("modal-pet",${JSON.stringify(r)})'>✏</button>
+          <button class="btn btn-red btn-sm" onclick="delPET('${r._docId}')">🗑</button>
+        </td>
+      </tr>`).join('')
+    : `<tr><td colspan="10" class="no-data">Sin registros PET UNAM que coincidan.</td></tr>`;
+  renderPag('pag-p', pages, pageP, p => { pageP=p; renderPET(); });
+}
+
+// ══════════════════════════════════════════
+//  RENDER – DASHBOARD
+// ══════════════════════════════════════════
+function refreshDashboard() {
+  const all = [...estudios, ...pets];
+  document.getElementById('st-total').textContent = all.length;
+  document.getElementById('st-solv').textContent  = all.filter(r=>r.estatus==='Solventado').length;
+  document.getElementById('st-proc').textContent  = all.filter(r=>r.estatus==='En proceso').length;
+  document.getElementById('st-canc').textContent  = all.filter(r=>r.estatus==='Cancelado').length;
+  document.getElementById('st-pend').textContent  = all.filter(r=>r.estatus==='Pendiente'||r.estatus==='Pago parcial').length;
+  document.getElementById('st-pet').textContent   = pets.length;
+
+  const recientes = [...all].sort((a,b)=>{
+    const ta = a._ts?.seconds||0, tb = b._ts?.seconds||0;
+    return tb - ta;
+  }).slice(0,10);
+
+  document.getElementById('tbody-recientes').innerHTML = recientes.length
+    ? recientes.map(r=>`<tr>
+        <td>${r.fecha||'—'}</td>
+        <td>${r.nombre||'—'}</td>
+        <td>${r.estudio||r.tipo||'—'}</td>
+        <td><small>${r.categoria||'—'}</small></td>
+        <td>${fmt(r.monto||r.cotizado)}</td>
+        <td>${statusBadge(r.estatus)}</td>
+      </tr>`).join('')
+    : `<tr><td colspan="6" class="no-data">Sin registros aún.</td></tr>`;
+
+  // Pagos
+  const solv = all.filter(r=>r.estatus==='Solventado').reduce((a,r)=>a+(parseFloat(r.monto||r.cotizado)||0),0);
+  const proc = all.filter(r=>r.estatus==='En proceso'||r.estatus==='Pago parcial').reduce((a,r)=>a+(parseFloat(r.monto||r.cotizado)||0),0);
+  const pend = all.filter(r=>r.estatus==='Pendiente').reduce((a,r)=>a+(parseFloat(r.monto||r.cotizado)||0),0);
+  document.getElementById('p-solv').textContent = fmt(solv);
+  document.getElementById('p-proc').textContent = fmt(proc);
+  document.getElementById('p-pend').textContent = fmt(pend);
+
+  document.getElementById('tbody-pagos').innerHTML = all.length
+    ? [...all].sort((a,b)=>(b._ts?.seconds||0)-(a._ts?.seconds||0)).map(r=>`<tr>
+        <td><small>${r.categoria||'—'}</small></td>
+        <td>${r.nombre||'—'}</td>
+        <td>${r.estudio||r.tipo||'—'}</td>
+        <td>${fmt(r.monto||r.cotizado)}</td>
+        <td>${statusBadge(r.estatus)}</td>
+        <td>${r.fecha||'—'}</td>
+      </tr>`).join('')
+    : `<tr><td colspan="6" class="no-data">Sin registros.</td></tr>`;
+}
+
+// ══════════════════════════════════════════
+//  PAGINATION
+// ══════════════════════════════════════════
+function renderPag(id, pages, cur, cb) {
+  const el = document.getElementById(id);
+  if (pages <= 1) { el.innerHTML=''; return; }
+  let h = `<span>Pág ${cur}/${pages}</span>`;
+  if (cur>1)     h += `<button onclick="(${cb.toString()})(${cur-1})">‹</button>`;
+  for (let p=Math.max(1,cur-2);p<=Math.min(pages,cur+2);p++)
+    h += `<button class="${p===cur?'active':''}" onclick="(${cb.toString()})(${p})">${p}</button>`;
+  if (cur<pages) h += `<button onclick="(${cb.toString()})(${cur+1})">›</button>`;
+  el.innerHTML = h;
+}
+
+// ══════════════════════════════════════════
+//  EXPORT CSV
+// ══════════════════════════════════════════
+function exportCSV(tipo) {
+  const data = tipo==='estudios' ? estudios : pets;
+  if (!data.length) { alert('No hay datos para exportar.'); return; }
+  const cols = ['fecha','nombre','estudio','tipo','folio','monto','cotizado','pagado','participacion','estatus','notas'];
+  const rows = [cols.join(','), ...data.map(r=>cols.map(c=>JSON.stringify(r[c]||'')).join(','))];
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([rows.join('\n')],{type:'text/csv;charset=utf-8;'}));
+  a.download = `lmp_${tipo}_${new Date().toISOString().slice(0,10)}.csv`;
+  a.click();
+}
+</script>
+</body>
+</html>
