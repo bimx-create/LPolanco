@@ -766,7 +766,7 @@ function renderPET() {
     ? slice.map((r,i) => `<tr>
         <td>${(pageP-1)*PAGE+i+1}</td>
         <td>${escaparCelda(r.fecha||'—')}</td>
-        <td><strong>${escaparCelda(r.nombre||'<em style="color:#aaa">Sin nombre</em>')}</strong></td>
+        <td>${r.nombre?.trim() ? `<strong>${escaparCelda(r.nombre)}</strong>` : '<em style="color:#aaa">Sin nombre</em>'}</td>
         <td><span class="status s-pendiente" style="background:#e8f4fd">${r.tipo}</span></td>
         <td>${fmt(r.cotizado)}</td>
         <td>${fmt(r.pagado)}</td>
