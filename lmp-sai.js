@@ -48,7 +48,7 @@
           folio: row.folio,
           notas: row.sede ? 'Sede: ' + row.sede : '',
           categoria: 'Polanco',
-          estatus: 'Sin estatus'
+          estatus: 'Solventado'
         })));
         lastSnapshot = snapshot;
       }
