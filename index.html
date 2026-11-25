@@ -9,6 +9,9 @@
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script defer src="Supabaseclient.js"></script>
+<script defer src="lmp-sai.js"></script>
 
   <style>
     :root {
@@ -192,6 +195,7 @@
 </nav>
 
 <main>
+  <p id="sai-lmp-status" class="info-box orange" role="status" hidden></p>
 
   <!-- ══════ DASHBOARD ══════ -->
   <div id="tab-dashboard" class="tab-content active">
@@ -224,7 +228,7 @@
           <option value="">Todos los estatus</option>
           <option>Solventado</option><option>En proceso</option>
           <option>Cancelado</option><option>Pendiente</option><option>Pago parcial</option>
-        </select>
+        <option>Sin estatus</option></select>
         <button class="btn btn-primary" onclick="openModal('modal-estudio',null)">+ Nuevo estudio</button>
         <button class="btn btn-secondary" onclick="exportCSV('estudios')">⬇ CSV</button>
         <button class="btn btn-secondary" onclick="forzarSeed()" title="Recarga los pacientes del portal Polanco si Firestore está vacío">🔄 Recargar pacientes</button>
@@ -416,12 +420,14 @@ function doLogin() {
 function mostrarApp() {
   document.getElementById('login-overlay').style.display = 'none';
   initListeners();
+  document.dispatchEvent(new Event('polanco-session-change'));
 }
 
 function doLogout() {
   if (confirm('¿Cerrar sesión?')) {
     auth.signOut().finally(() => {
       document.getElementById('login-overlay').style.display = 'flex';
+      document.dispatchEvent(new Event('polanco-session-change'));
     });
   }
 }
@@ -453,12 +459,33 @@ function switchTab(id, btn) {
   document.querySelectorAll('nav button').forEach(el => el.classList.remove('active'));
   document.getElementById('tab-' + id).classList.add('active');
   if (btn) btn.classList.add('active');
+  document.dispatchEvent(new Event('polanco-tab-change'));
 }
 
 // ══════════════════════════════════════════
 //  LOCAL CACHES (actualizados por onSnapshot)
 // ══════════════════════════════════════════
 let estudios = [];
+let estudiosSai = [];
+
+function actualizarEstudiosSai(rows) {
+  estudiosSai = rows;
+  renderEstudios();
+  refreshDashboard();
+}
+
+function todosEstudiosPolanco() {
+  return [...estudios, ...estudiosSai];
+}
+
+function escaparCelda(valor) {
+  const caracteres = {'&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;'};
+  return String(valor).replace(/[&<>"']/g, caracter => caracteres[caracter]);
+}
+
+function fechaOrden(r) {
+  return r._ts?.seconds ?? ((Date.parse(r.fecha) || 0) / 1000);
+}
 let pets     = [];
 let pageE = 1, pageP = 1;
 const PAGE = 20;
@@ -681,7 +708,7 @@ function delPET(docId) {
 function getFilteredE() {
   const q = (document.getElementById('buscar-e')||{value:''}).value.toLowerCase();
   const s = (document.getElementById('fil-est-e')||{value:''}).value;
-  return estudios.filter(r =>
+  return todosEstudiosPolanco().filter(r =>
     (!q || (r.nombre||'').toLowerCase().includes(q) || (r.estudio||'').toLowerCase().includes(q) || (r.folio||'').toLowerCase().includes(q)) &&
     (!s || r.estatus === s)
   );
@@ -697,17 +724,17 @@ function renderEstudios() {
   tbody.innerHTML = slice.length
     ? slice.map((r,i) => `<tr>
         <td>${(pageE-1)*PAGE+i+1}</td>
-        <td>${r.fecha||'—'}</td>
+        <td>${escaparCelda(r.fecha||'—')}</td>
         <td><small>${r.idpac||'—'}</small></td>
-        <td><strong>${r.nombre||'—'}</strong></td>
-        <td>${r.estudio||'—'}</td>
-        <td>${r.folio||'—'}</td>
+        <td><strong>${escaparCelda(r.nombre||'—')}</strong></td>
+        <td>${escaparCelda(r.estudio||'—')}</td>
+        <td>${escaparCelda(r.folio||'—')}</td>
         <td>${fmt(r.monto)}</td>
         <td>${statusBadge(r.estatus)}</td>
-        <td><small>${r.notas||''}</small></td>
-        <td>
+        <td><small>${escaparCelda(r.notas||'')}</small></td>
+        <td>${r.origenSai ? '<small>Desde Llenado SAI</small>' : `
           <button class="btn btn-blue btn-sm" onclick='openModal("modal-estudio",${JSON.stringify(r)})'>✏</button>
-          <button class="btn btn-red btn-sm" onclick="delEstudio('${r._docId}')">🗑</button>
+          <button class="btn btn-red btn-sm" onclick="delEstudio('${r._docId}')">🗑</button>`}
         </td>
       </tr>`).join('')
     : `<tr><td colspan="10" class="no-data">Sin registros que coincidan.</td></tr>`;
@@ -738,14 +765,14 @@ function renderPET() {
   tbody.innerHTML = slice.length
     ? slice.map((r,i) => `<tr>
         <td>${(pageP-1)*PAGE+i+1}</td>
-        <td>${r.fecha||'—'}</td>
-        <td><strong>${r.nombre||'<em style="color:#aaa">Sin nombre</em>'}</strong></td>
+        <td>${escaparCelda(r.fecha||'—')}</td>
+        <td><strong>${escaparCelda(r.nombre||'<em style="color:#aaa">Sin nombre</em>')}</strong></td>
         <td><span class="status s-pendiente" style="background:#e8f4fd">${r.tipo}</span></td>
         <td>${fmt(r.cotizado)}</td>
         <td>${fmt(r.pagado)}</td>
         <td>${fmt(r.participacion)}</td>
         <td>${statusBadge(r.estatus)}</td>
-        <td><small>${r.notas||''}</small></td>
+        <td><small>${escaparCelda(r.notas||'')}</small></td>
         <td>
           <button class="btn btn-blue btn-sm" onclick='openModal("modal-pet",${JSON.stringify(r)})'>✏</button>
           <button class="btn btn-red btn-sm" onclick="delPET('${r._docId}')">🗑</button>
@@ -759,7 +786,7 @@ function renderPET() {
 //  RENDER – DASHBOARD
 // ══════════════════════════════════════════
 function refreshDashboard() {
-  const all = [...estudios, ...pets];
+  const all = [...todosEstudiosPolanco(), ...pets];
   document.getElementById('st-total').textContent = all.length;
   document.getElementById('st-solv').textContent  = all.filter(r=>r.estatus==='Solventado').length;
   document.getElementById('st-proc').textContent  = all.filter(r=>r.estatus==='En proceso').length;
@@ -767,16 +794,13 @@ function refreshDashboard() {
   document.getElementById('st-pend').textContent  = all.filter(r=>r.estatus==='Pendiente'||r.estatus==='Pago parcial').length;
   document.getElementById('st-pet').textContent   = pets.length;
 
-  const recientes = [...all].sort((a,b)=>{
-    const ta = a._ts?.seconds||0, tb = b._ts?.seconds||0;
-    return tb - ta;
-  }).slice(0,10);
+  const recientes = [...all].sort((a,b) => fechaOrden(b) - fechaOrden(a)).slice(0,10);
 
   document.getElementById('tbody-recientes').innerHTML = recientes.length
     ? recientes.map(r=>`<tr>
-        <td>${r.fecha||'—'}</td>
-        <td>${r.nombre||'—'}</td>
-        <td>${r.estudio||r.tipo||'—'}</td>
+        <td>${escaparCelda(r.fecha||'—')}</td>
+        <td>${escaparCelda(r.nombre||'—')}</td>
+        <td>${escaparCelda(r.estudio||r.tipo||'—')}</td>
         <td><small>${r.categoria||'—'}</small></td>
         <td>${fmt(r.monto||r.cotizado)}</td>
         <td>${statusBadge(r.estatus)}</td>
@@ -792,13 +816,13 @@ function refreshDashboard() {
   document.getElementById('p-pend').textContent = fmt(pend);
 
   document.getElementById('tbody-pagos').innerHTML = all.length
-    ? [...all].sort((a,b)=>(b._ts?.seconds||0)-(a._ts?.seconds||0)).map(r=>`<tr>
+    ? [...all].sort((a,b)=>fechaOrden(b) - fechaOrden(a)).map(r=>`<tr>
         <td><small>${r.categoria||'—'}</small></td>
-        <td>${r.nombre||'—'}</td>
-        <td>${r.estudio||r.tipo||'—'}</td>
+        <td>${escaparCelda(r.nombre||'—')}</td>
+        <td>${escaparCelda(r.estudio||r.tipo||'—')}</td>
         <td>${fmt(r.monto||r.cotizado)}</td>
         <td>${statusBadge(r.estatus)}</td>
-        <td>${r.fecha||'—'}</td>
+        <td>${escaparCelda(r.fecha||'—')}</td>
       </tr>`).join('')
     : `<tr><td colspan="6" class="no-data">Sin registros.</td></tr>`;
 }
@@ -821,7 +845,7 @@ function renderPag(id, pages, cur, cb) {
 //  EXPORT CSV
 // ══════════════════════════════════════════
 function exportCSV(tipo) {
-  const data = tipo==='estudios' ? estudios : pets;
+  const data = tipo==='estudios' ? todosEstudiosPolanco() : pets;
   if (!data.length) { alert('No hay datos para exportar.'); return; }
   const cols = ['fecha','nombre','estudio','tipo','folio','monto','cotizado','pagado','participacion','estatus','notas'];
   const rows = [cols.join(','), ...data.map(r=>cols.map(c=>JSON.stringify(r[c]||'')).join(','))];

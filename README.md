@@ -69,3 +69,11 @@ Contraseña: Sanare2026
 - Firebase Firestore (base de datos en tiempo real)
 - Firebase Authentication (sesiones anónimas)
 - Firebase CDN SDK v10.12.2
+
+## Registros LMP de Llenado SAI
+
+Los registros se consultan con los permisos existentes de Supabase y aparecen
+en las vistas de Dashboard, Estudios Polanco y Pagos. PET UNAM conserva su
+fuente propia. Polanco actualiza los registros LMP cada 15 segundos mientras
+la herramienta está visible. Las altas y ediciones se hacen en Llenado SAI.
+En Pagos se muestran con «Sin estatus» porque SAI no registra el estado del pago.
