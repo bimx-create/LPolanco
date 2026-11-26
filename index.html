@@ -160,7 +160,7 @@
   <div class="login-box">
     <div class="login-logo">LMP</div>
     <h2>Control de Estudios</h2>
-    <p>Laboratorio Médico Polanco · PET UNAM · Sanare Salud</p>
+    <p>Laboratorio Médico Polanco · Sanare Salud</p>
     <input type="text" id="login-user" placeholder="Usuario" autocomplete="username"/>
     <input type="password" id="login-pass" placeholder="Contraseña" autocomplete="current-password"/>
     <div class="err" id="login-err"></div>
@@ -174,7 +174,7 @@
     <div style="width:38px;height:38px;background:var(--orange);border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:800;color:#fff;font-size:.85rem;">LMP</div>
     <div>
       <span>Control de Estudios</span><br/>
-      <small>Laboratorio Médico Polanco · PET UNAM · Sanare Salud</small>
+      <small>Laboratorio Médico Polanco · Sanare Salud</small>
     </div>
   </div>
   <div class="live">
@@ -467,6 +467,22 @@ function switchTab(id, btn) {
 // ══════════════════════════════════════════
 let estudios = [];
 let estudiosSai = [];
+let ajustesSai = new Map();
+let estudioSaiEnEdicion = null;
+const camposEstudioSai = ['fecha', 'idpac', 'nombre', 'estudio', 'folio', 'monto', 'estatus', 'notas'];
+
+function referenciaAjusteSai(id) {
+  return db.collection('estudios').doc('sai-lmp-' + encodeURIComponent(id));
+}
+
+function estudioSaiVisible(row) {
+  const ajuste = ajustesSai.get(row.saiId);
+  if (ajuste?.oculto) return null;
+  const cambios = Object.fromEntries(camposEstudioSai
+    .filter(campo => Object.hasOwn(ajuste?.cambios || {}, campo))
+    .map(campo => [campo, ajuste.cambios[campo]]));
+  return {...row, ...cambios};
+}
 
 function actualizarEstudiosSai(rows) {
   estudiosSai = rows;
@@ -475,7 +491,7 @@ function actualizarEstudiosSai(rows) {
 }
 
 function todosEstudiosPolanco() {
-  return [...estudios, ...estudiosSai];
+  return [...estudios, ...estudiosSai.map(estudioSaiVisible).filter(Boolean)];
 }
 
 function escaparCelda(valor) {
@@ -571,7 +587,10 @@ function initListeners() {
   seedFirestoreIfEmpty();
 
   db.collection('estudios').orderBy('_ts','desc').onSnapshot(snap => {
-    estudios = snap.docs.map(d => ({ ...d.data(), _docId: d.id }));
+    const rows = snap.docs.map(d => ({ ...d.data(), _docId: d.id }));
+    ajustesSai = new Map(rows.filter(row => row.tipoDocumento === 'ajuste-lmp-sai')
+      .map(row => [row.saiId, row]));
+    estudios = rows.filter(row => row.tipoDocumento !== 'ajuste-lmp-sai');
     renderEstudios();
     refreshDashboard();
   }, err => console.error('estudios:', err));
@@ -599,6 +618,7 @@ function today() { return new Date().toISOString().slice(0,10); }
 function openModal(id, data) {
   document.getElementById(id).classList.add('open');
   if (id === 'modal-estudio') {
+    estudioSaiEnEdicion = data?.origenSai ? data : null;
     if (data) {
       document.getElementById('e-id').value     = data._docId||'';
       document.getElementById('e-fecha').value  = data.fecha||today();
@@ -606,7 +626,7 @@ function openModal(id, data) {
       document.getElementById('e-nombre').value = data.nombre||'';
       document.getElementById('e-estudio').value= data.estudio||'';
       document.getElementById('e-folio').value  = data.folio||'';
-      document.getElementById('e-monto').value  = data.monto||'';
+      document.getElementById('e-monto').value  = data.monto??'';
       document.getElementById('e-estatus').value= data.estatus||'Pendiente';
       document.getElementById('e-notas').value  = data.notas||'';
     } else {
@@ -662,11 +682,41 @@ function saveEstudio() {
     _ts: firebase.firestore.FieldValue.serverTimestamp()
   };
   if (!rec.nombre || !rec.estudio) { alert('Nombre y estudio son obligatorios.'); return; }
+  const origen = estudioSaiEnEdicion;
+  if (origen) {
+    const cambios = Object.fromEntries(camposEstudioSai
+      .filter(campo => String(origen[campo] ?? '') !== rec[campo])
+      .map(campo => [campo, rec[campo]]));
+    if (!Object.keys(cambios).length) { closeModal('modal-estudio'); return; }
+    referenciaAjusteSai(origen.saiId).set({
+      tipoDocumento: 'ajuste-lmp-sai', saiId: origen.saiId, cambios, _ts: rec._ts
+    }, {merge: true}).then(() => closeModal('modal-estudio'))
+      .catch(err => alert('Error al guardar en Polanco: ' + err.message));
+    return;
+  }
   const col = db.collection('estudios');
   const p   = docId ? col.doc(docId).set(rec) : col.add(rec);
   p.then(() => closeModal('modal-estudio'))
    .catch(err => alert('Error al guardar: ' + err.message));
 }
+
+document.getElementById('tbody-estudios').addEventListener('click', event => {
+  const button = event.target.closest('button[data-sai-id]');
+  if (!button) return;
+  const saiId = button.dataset.saiId;
+  const row = estudiosSai.find(item => item.saiId === saiId);
+  const estudio = row && estudioSaiVisible(row);
+  if (!estudio) return;
+  if (button.dataset.saiAccion === 'editar') {
+    openModal('modal-estudio', estudio);
+    return;
+  }
+  if (!confirm('¿Quitar este estudio de Polanco? El registro seguirá en Llenado SAI.')) return;
+  referenciaAjusteSai(saiId).set({
+    tipoDocumento: 'ajuste-lmp-sai', saiId, oculto: true,
+    _ts: firebase.firestore.FieldValue.serverTimestamp()
+  }, {merge: true}).catch(err => alert('Error al quitar de Polanco: ' + err.message));
+});
 
 function delEstudio(docId) {
   if (!confirm('¿Eliminar este estudio?')) return;
@@ -725,14 +775,16 @@ function renderEstudios() {
     ? slice.map((r,i) => `<tr>
         <td>${(pageE-1)*PAGE+i+1}</td>
         <td>${escaparCelda(r.fecha||'—')}</td>
-        <td><small>${r.idpac||'—'}</small></td>
+        <td><small>${escaparCelda(r.idpac||'—')}</small></td>
         <td><strong>${escaparCelda(r.nombre||'—')}</strong></td>
         <td>${escaparCelda(r.estudio||'—')}</td>
         <td>${escaparCelda(r.folio||'—')}</td>
         <td>${fmt(r.monto)}</td>
         <td>${statusBadge(r.estatus)}</td>
         <td><small>${escaparCelda(r.notas||'')}</small></td>
-        <td>${r.origenSai ? '<small>Desde Llenado SAI</small>' : `
+        <td>${r.origenSai ? `
+          <button type="button" class="btn btn-blue btn-sm" data-sai-id="${escaparCelda(r.saiId)}" data-sai-accion="editar" title="Editar en Polanco" aria-label="Editar en Polanco">✏</button>
+          <button type="button" class="btn btn-red btn-sm" data-sai-id="${escaparCelda(r.saiId)}" data-sai-accion="quitar" title="Quitar de Polanco" aria-label="Quitar de Polanco">🗑</button>` : `
           <button class="btn btn-blue btn-sm" onclick='openModal("modal-estudio",${JSON.stringify(r)})'>✏</button>
           <button class="btn btn-red btn-sm" onclick="delEstudio('${r._docId}')">🗑</button>`}
         </td>

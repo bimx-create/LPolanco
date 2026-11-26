@@ -77,3 +77,7 @@ en las vistas de Dashboard, Estudios Polanco y Pagos. PET UNAM conserva su
 fuente propia. Polanco actualiza los registros LMP cada 15 segundos mientras
 la herramienta está visible. Las altas y ediciones se hacen en Llenado SAI.
 Polanco asigna automáticamente el estado «Solventado» a los registros importados de Llenado SAI.
+
+Los botones de edición y borrado de las filas LMP actúan en Polanco. Los cambios
+locales se guardan en Firebase y prevalecen para los campos editados. Al quitar
+una fila, Polanco deja de mostrarla incluso después de volver a sincronizar.

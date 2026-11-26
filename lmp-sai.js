@@ -41,6 +41,7 @@
       if (snapshot !== lastSnapshot) {
         actualizarEstudiosSai(rows.map(row => ({
           origenSai: true,
+          saiId: String(row.id),
           fecha: row.fecha_infusion,
           nombre: row.paciente,
           estudio: row.servicio,
