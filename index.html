@@ -953,18 +953,24 @@ function renderPET() {
         <td>${(pageP-1)*PAGE+i+1}</td>
         <td>${escaparCelda(r.fecha||'—')}</td>
         <td>${r.nombre?.trim() ? `<strong>${escaparCelda(r.nombre)}</strong>` : '<em style="color:#aaa">Sin nombre</em>'}</td>
-        <td><span class="status s-pendiente" style="background:#e8f4fd">${r.tipo}</span></td>
+        <td><span class="status s-pendiente" style="background:#e8f4fd">${escaparCelda(r.tipo)}</span></td>
         <td>${fmt(r.cotizado)}</td>
         <td>${fmt(r.pagado)}</td>
         <td>${fmt(r.participacion)}</td>
-        <td>${statusBadge(r.estatus)}</td>
+        <td>${statusBadge(escaparCelda(r.estatus))}</td>
         <td><small>${escaparCelda(r.notas||'')}</small></td>
         <td>
-          <button class="btn btn-blue btn-sm" onclick='openModal("modal-pet",${JSON.stringify(r)})'>✏</button>
-          <button class="btn btn-red btn-sm" onclick="delPET('${r._docId}')">🗑</button>
+          <button class="btn btn-blue btn-sm" data-pet-edit="${i}">✏</button>
+          <button class="btn btn-red btn-sm" data-pet-delete="${i}">🗑</button>
         </td>
       </tr>`).join('')
     : `<tr><td colspan="10" class="no-data">Sin registros PET UNAM que coincidan.</td></tr>`;
+  tbody.querySelectorAll("[data-pet-edit]").forEach(button => {
+    button.addEventListener("click", () => openModal("modal-pet", slice[Number(button.dataset.petEdit)]));
+  });
+  tbody.querySelectorAll("[data-pet-delete]").forEach(button => {
+    button.addEventListener("click", () => delPET(slice[Number(button.dataset.petDelete)]._docId));
+  });
   renderPag('pag-p', pages, pageP, p => { pageP=p; renderPET(); });
 }
 
